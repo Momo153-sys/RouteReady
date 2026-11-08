@@ -1,0 +1,52 @@
+{
+  "name": "routeready",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.3.1",
+    "@capacitor-community/sqlite": "^8.1.1",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/geolocation": "^8.2.4",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@versatiles/style": "^7.1.0",
+    "dexie": "^4.4.7",
+    "fast-xml-parser": "^5.12.0",
+    "graphology": "^0.26.0",
+    "graphology-shortest-path": "^2.1.0",
+    "maplibre-gl": "^6.16.0",
+    "papaparse": "^5.7.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sql.js": "^1.11.0",
+    "vitest": "^5.0.5"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/sql.js": "^1.4.11",
+    "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "fake-indexeddb": "^6.2.7",
+    "globals": "^17.13.0",
+    "typescript": "~6.0.0",
+    "typescript-eslint": "^8.72.0",
+    "vite": "^8.3.5",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}
