@@ -2,7 +2,6 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
- 
 
 export default defineConfig({
   plugins: [
@@ -20,26 +19,25 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         icons: [
-  {
-    src: '/routeready-icon.png',
-    sizes: '512x512',
-    type: 'image/png',
-  },
-],
+          {
+            src: '/routeready-icon.png',
+            sizes: '512x512',
+            type: 'image/png',
+          },
+        ],
       },
       workbox: {
-  globPatterns: [
-    '**/*.{js,css,html,svg,woff2}',
-    'maps/**/*',
-    'wasm/sql-wasm.wasm',
-  ],
-  maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
-  navigateFallback: '/index.html',
-},
+        globPatterns: [
+          '**/*.{js,css,html,svg,woff2}',
+          'maps/**/*',
+          'wasm/sql-wasm.wasm',
+        ],
+        maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
+        navigateFallback: '/index.html',
+      },
     }),
   ],
   server: {
     host: '0.0.0.0',
-     
   },
 });
