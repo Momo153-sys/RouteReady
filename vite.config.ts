@@ -2,7 +2,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import { readFileSync } from 'node:fs';
+ 
 
 export default defineConfig({
   plugins: [
@@ -40,9 +40,6 @@ export default defineConfig({
   ],
   server: {
     host: '0.0.0.0',
-    https: {
-      key: readFileSync('.certs/routeready-key.pem'),
-      cert: readFileSync('.certs/routeready.pem'),
-    },
+     
   },
 });
