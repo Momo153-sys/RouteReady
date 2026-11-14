@@ -1,30 +1,39 @@
- declare global {
+
+declare global {
   interface Window {
     diagnoseStopTimes: typeof diagnoseStopTimes;
   }
 }
 
 import { useCallback, useEffect, useState } from 'react';
+
 import {
   initializeDatabase,
   getStopCount,
 } from './database/dexie';
+
 import { loadOSMTransit } from './lib/import/osm-loader';
+
 import {
   buildTransitGraph as buildGtfsConnections,
 } from './lib/routing/transit-graph.builder';
+
 import { generateWalkingConnections } from './lib/routing/walking-connections';
 import { resetTransitGraphCache } from './lib/routing/transit-graph';
+
 import JourneySearch from './components/JourneySearch';
+import TransitLines from './components/TransitLines';
 import SavedPlaces from './components/SavedPlaces';
+
 import {
   importGtfsData,
   type GtfsDatabaseImportResult,
   type GtfsImportProgress,
 } from './lib/gtfs/database-importer';
+
 import { diagnoseStopTimes } from './repositories/stop-time.repository';
 
-type NavigationTab = 'home' | 'saved' | 'settings';
+type NavigationTab = 'home' | 'lines' | 'saved' | 'settings';
 
 type SavedPlaceSelection = {
   place: {
@@ -46,8 +55,6 @@ function initializeTransitNetwork(): Promise<void> {
       // Import metro, tram, Marmaray and ferry data.
       await loadOSMTransit();
 
-      
-
       // Generate walking links if they haven't been generated yet.
       await generateWalkingConnections();
 
@@ -66,11 +73,15 @@ function App() {
   const [stopCount, setStopCount] = useState(0);
   const [error, setError] = useState('');
   const [isImporting, setIsImporting] = useState(false);
-  const [progress, setProgress] = useState<GtfsImportProgress | null>(null);
+
+  const [progress, setProgress] =
+    useState<GtfsImportProgress | null>(null);
+
   const [importResult, setImportResult] =
     useState<GtfsDatabaseImportResult | null>(null);
 
-  const [activeTab, setActiveTab] = useState<NavigationTab>('home');
+  const [activeTab, setActiveTab] =
+    useState<NavigationTab>('home');
 
   const [savedPlaceSelection, setSavedPlaceSelection] =
     useState<SavedPlaceSelection | null>(null);
@@ -91,40 +102,44 @@ function App() {
       : 'light';
   });
 
- 
+  // Expose stop-time diagnostics for development.
+  useEffect(() => {
+    window.diagnoseStopTimes = diagnoseStopTimes;
+  }, []);
 
-useEffect(() => {
-  window.diagnoseStopTimes = diagnoseStopTimes;
-}, []);
-
+  // Apply and persist the selected theme.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('routeready-theme', theme);
   }, [theme]);
 
+  // Initialize the local transit network.
   useEffect(() => {
-  async function initialize() {
-    try {
-      await initializeTransitNetwork();
+    async function initialize() {
+      try {
+        await initializeTransitNetwork();
 
-      const count = await getStopCount();
-      setStopCount(count);
-      setIsReady(true);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to initialize the transit network.',
-      );
+        const count = await getStopCount();
+
+        setStopCount(count);
+        setIsReady(true);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to initialize the transit network.',
+        );
+      }
     }
-  }
 
-  void initialize();
-}, []);
+    void initialize();
+  }, []);
 
+  // Handle navigation requests from Saved Places.
   useEffect(() => {
     const handleSavedPlaceSelection = (event: Event) => {
-      const customEvent = event as CustomEvent<SavedPlaceSelection>;
+      const customEvent =
+        event as CustomEvent<SavedPlaceSelection>;
 
       setSavedPlaceSelection(customEvent.detail);
       setActiveTab('home');
@@ -143,51 +158,100 @@ useEffect(() => {
     };
   }, []);
 
+  // Import and rebuild the local transit network.
   async function handleImport() {
-    if (isImporting) return;
+  if (isImporting) return;
 
-    setIsImporting(true);
-    setError('');
-    setImportResult(null);
+  setIsImporting(true);
+  setError('');
+  setImportResult(null);
+
+  setProgress({
+    stage: 'fetching',
+    message: 'Starting transit data import...',
+  });
+
+  try {
+    const result = await importGtfsData(setProgress);
+
+    // Refresh the visible stop count immediately.
+    const count = await getStopCount();
+    setStopCount(count);
+
+    // Generate GTFS transit connections.
     setProgress({
-      stage: 'fetching',
-      message: 'Starting transit data import...',
+      stage: 'connections',
+      message: 'Generating transit connections...',
+      processed: 0,
+      total: result.stopTimesImported,
     });
 
-    try {
-      const result = await importGtfsData(setProgress);
+    const graphResult = await buildGtfsConnections(
+      (processed, total) => {
+        setProgress({
+          stage: 'connections',
+          message: 'Generating transit connections...',
+          processed,
+          total,
+        });
+      }
+    );
 
-setProgress({
-  stage: 'stop-times',
-  message: 'Generating transit connections...',
-  processed: result.stopTimesImported,
-});
+    console.info(
+      '[RouteReady] GTFS connections generated:',
+      graphResult,
+    );
 
-const graphResult = await buildGtfsConnections();
+    // Generate walking connections.
+    setProgress({
+      stage: 'walking',
+      message: 'Generating walking connections...',
+    });
 
-console.info('[RouteReady] GTFS connections generated:', graphResult);
-
-await generateWalkingConnections();
-resetTransitGraphCache();
-
-      setImportResult(result);
-
-      const count = await getStopCount();
-      setStopCount(count);
-
-      // Run the lightweight stop-time diagnostic after importing.
-      await diagnoseStopTimes();
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Transit data import failed.',
-      );
-    } finally {
-      setIsImporting(false);
-    }
+    const walkingEdges = await generateWalkingConnections(
+  (processed, total) => {
+    setProgress({
+      stage: 'walking',
+      message: 'Generating walking connections...',
+      processed,
+      total,
+    });
   }
+);
 
+    console.info(
+      '[RouteReady] Walking connections generated:',
+      walkingEdges,
+    );
+
+    resetTransitGraphCache();
+
+    setImportResult(result);
+
+    setProgress({
+      stage: 'completed',
+      message: 'Transit network updated successfully.',
+      processed: result.stopTimesImported,
+      total: result.stopTimesImported,
+    });
+  } catch (err) {
+    setError(
+      err instanceof Error
+        ? err.message
+        : 'Transit data import failed.',
+    );
+
+    setProgress({
+      stage: 'failed',
+      message: 'Transit data update failed.',
+      error: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    setIsImporting(false);
+  }
+}
+
+  // Display initialization errors.
   if (error && !isReady) {
     return (
       <main className="app-shell">
@@ -198,6 +262,7 @@ resetTransitGraphCache();
     );
   }
 
+  // Display loading screen.
   if (!isReady) {
     return (
       <main className="app-shell">
@@ -210,6 +275,7 @@ resetTransitGraphCache();
 
   return (
     <div className="app-shell">
+      {/* Header */}
       <header className="app-header">
         <div className="app-container header-content">
           <div className="brand">
@@ -227,12 +293,16 @@ resetTransitGraphCache();
               type="button"
               className="theme-toggle"
               onClick={() =>
-                setTheme(current =>
+                setTheme((current) =>
                   current === 'light' ? 'dark' : 'light',
                 )
               }
-              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+              aria-label={`Switch to ${
+                theme === 'light' ? 'dark' : 'light'
+              } theme`}
+              title={`Switch to ${
+                theme === 'light' ? 'dark' : 'light'
+              } theme`}
             >
               {theme === 'light' ? '☾' : '☀'}
             </button>
@@ -240,7 +310,10 @@ resetTransitGraphCache();
         </div>
       </header>
 
+      {/* Main content */}
       <main className="app-container home-content">
+
+        {/* Home page */}
         {activeTab === 'home' && (
           <>
             <section className="welcome-section">
@@ -256,15 +329,18 @@ resetTransitGraphCache();
               </h1>
 
               <p className="welcome-description">
-                Plan your journeys and explore Istanbul's public transport,
-                even when you're offline.
+                Plan your journeys and explore Istanbul's public
+                transport, even when you're offline.
               </p>
             </section>
 
             <section className="journey-card">
               <div className="journey-card-header">
                 <div>
-                  <h2 className="journey-card-title">Transit data</h2>
+                  <h2 className="journey-card-title">
+                    Transit data
+                  </h2>
+
                   <p className="journey-card-subtitle">
                     Your locally stored Istanbul transport network
                   </p>
@@ -296,12 +372,16 @@ resetTransitGraphCache();
                 <div className="status-message" aria-live="polite">
                   <p>{progress.message}</p>
 
-                  {progress.stage === 'stop-times' && (
-                    <p>
-                      Records processed:{' '}
-                      {(progress.processed ?? 0).toLocaleString()}
-                    </p>
-                  )}
+                  {(progress.stage === 'stop-times' ||
+  progress.stage === 'connections' ||
+  progress.stage === 'walking') && (
+  <p>
+    Records processed:{' '}
+    {(progress.processed ?? 0).toLocaleString()}
+    {progress.total !== undefined &&
+      ` / ${progress.total.toLocaleString()}`}
+  </p>
+)}
 
                   {progress.stage === 'completed' && (
                     <p>Import completed successfully.</p>
@@ -318,6 +398,7 @@ resetTransitGraphCache();
               {importResult && (
                 <details className="import-summary">
                   <summary>View import summary</summary>
+
                   <ul>
                     <li>
                       Agencies: {importResult.agenciesImported.toLocaleString()}
@@ -344,18 +425,31 @@ resetTransitGraphCache();
 
             <JourneySearch
               savedPlaceSelection={savedPlaceSelection}
-              onSavedPlaceSelectionHandled={handleSavedPlaceSelectionHandled}
+              onSavedPlaceSelectionHandled={
+                handleSavedPlaceSelectionHandled
+              }
             />
           </>
         )}
 
+        {/* Transit Lines page */}
+        {activeTab === 'lines' && <TransitLines />}
+
+        {/* Saved Places page */}
         {activeTab === 'saved' && <SavedPlaces />}
 
+        {/* Settings page */}
         {activeTab === 'settings' && (
           <section className="settings-page">
             <header className="settings-header">
-              <span className="welcome-eyebrow">PERSONALIZE YOUR APP</span>
-              <h1 className="saved-places-title">Settings</h1>
+              <span className="welcome-eyebrow">
+                PERSONALIZE YOUR APP
+              </span>
+
+              <h1 className="saved-places-title">
+                Settings
+              </h1>
+
               <p className="saved-places-description">
                 Manage your RouteReady preferences.
               </p>
@@ -374,7 +468,7 @@ resetTransitGraphCache();
                   type="button"
                   className="secondary-button"
                   onClick={() =>
-                    setTheme(current =>
+                    setTheme((current) =>
                       current === 'light' ? 'dark' : 'light',
                     )
                   }
@@ -407,7 +501,9 @@ resetTransitGraphCache();
                 onClick={handleImport}
                 disabled={isImporting}
               >
-                {isImporting ? 'Updating...' : '↻ Update transit data'}
+                {isImporting
+                  ? 'Updating...'
+                  : '↻ Update transit data'}
               </button>
 
               {progress && (
@@ -425,45 +521,79 @@ resetTransitGraphCache();
 
             <div className="settings-about">
               <div className="brand">
-                <div className="brand-mark" aria-hidden="true">R</div>
+                <div className="brand-mark" aria-hidden="true">
+                  R
+                </div>
+
                 <div className="brand-name">
                   Route<span>Ready</span>
                 </div>
               </div>
+
               <p>Explore Istanbul. Even offline.</p>
             </div>
           </section>
         )}
       </main>
 
-      <nav className="bottom-navigation" aria-label="Main navigation">
+      {/* Bottom navigation */}
+      <nav
+        className="bottom-navigation"
+        aria-label="Main navigation"
+      >
         <button
           type="button"
-          className={`bottom-navigation-item ${activeTab === 'home' ? 'active' : ''}`}
+          className={`bottom-navigation-item ${
+            activeTab === 'home' ? 'active' : ''
+          }`}
           onClick={() => setActiveTab('home')}
           aria-current={activeTab === 'home' ? 'page' : undefined}
         >
-          <span className="bottom-navigation-icon" aria-hidden="true">⌂</span>
+          <span className="bottom-navigation-icon" aria-hidden="true">
+            ⌂
+          </span>
           <span>Home</span>
         </button>
 
         <button
           type="button"
-          className={`bottom-navigation-item ${activeTab === 'saved' ? 'active' : ''}`}
+          className={`bottom-navigation-item ${
+            activeTab === 'lines' ? 'active' : ''
+          }`}
+          onClick={() => setActiveTab('lines')}
+          aria-current={activeTab === 'lines' ? 'page' : undefined}
+        >
+          <span className="bottom-navigation-icon" aria-hidden="true">
+            🚆
+          </span>
+          <span>Lines</span>
+        </button>
+
+        <button
+          type="button"
+          className={`bottom-navigation-item ${
+            activeTab === 'saved' ? 'active' : ''
+          }`}
           onClick={() => setActiveTab('saved')}
           aria-current={activeTab === 'saved' ? 'page' : undefined}
         >
-          <span className="bottom-navigation-icon" aria-hidden="true">♡</span>
+          <span className="bottom-navigation-icon" aria-hidden="true">
+            ♡
+          </span>
           <span>Saved</span>
         </button>
 
         <button
           type="button"
-          className={`bottom-navigation-item ${activeTab === 'settings' ? 'active' : ''}`}
+          className={`bottom-navigation-item ${
+            activeTab === 'settings' ? 'active' : ''
+          }`}
           onClick={() => setActiveTab('settings')}
           aria-current={activeTab === 'settings' ? 'page' : undefined}
         >
-          <span className="bottom-navigation-icon" aria-hidden="true">⚙</span>
+          <span className="bottom-navigation-icon" aria-hidden="true">
+            ⚙
+          </span>
           <span>Settings</span>
         </button>
       </nav>

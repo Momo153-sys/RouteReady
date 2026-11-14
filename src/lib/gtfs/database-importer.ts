@@ -51,6 +51,8 @@ export type GtfsImportStage =
   | 'agencies-stops'
   | 'routes-trips'
   | 'stop-times'
+  | 'connections'
+  | 'walking'
   | 'completed'
   | 'failed';
 
@@ -58,6 +60,7 @@ export interface GtfsImportProgress {
   stage: GtfsImportStage;
   message: string;
   processed?: number;
+  total?: number;
   batches?: number;
   error?: string;
 }

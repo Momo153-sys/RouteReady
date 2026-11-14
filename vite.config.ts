@@ -28,9 +28,14 @@ export default defineConfig({
 ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
-        navigateFallback: '/index.html',
-      },
+  globPatterns: [
+    '**/*.{js,css,html,svg,woff2}',
+    'maps/**/*',
+    'wasm/sql-wasm.wasm',
+  ],
+  maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
+  navigateFallback: '/index.html',
+},
     }),
   ],
   server: {

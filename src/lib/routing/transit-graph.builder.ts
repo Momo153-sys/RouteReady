@@ -10,9 +10,10 @@ export interface GraphBuildResult {
 }
 
 export async function buildTransitGraph(
-  onProgress?: (processed: number) => void
+  onProgress?: (processed: number, total: number) => void
 ): Promise<GraphBuildResult> {
   const db = getDatabase();
+  const totalStopTimes = await db.stopTimes.count();
 
   const [trips, routes] = await Promise.all([
     db.trips.toArray(),
@@ -98,7 +99,7 @@ export async function buildTransitGraph(
     const lastRecord = records[records.length - 1];
     lastKey = [lastRecord.tripId, lastRecord.stopSequence];
 
-    onProgress?.(processedStopTimes);
+    onProgress?.(processedStopTimes, totalStopTimes);
   }
 
   return {

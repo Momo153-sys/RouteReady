@@ -8,6 +8,7 @@ const METERS_PER_DEGREE_LATITUDE = 111_320;
 
 const MAX_WALKING_DISTANCE_METERS = 300;
 const WALKING_SPEED_KMH = 4.5;
+const BATCH_SIZE = 10_000;
 
 type CoordinateStop = Stop & {
   latitude: number;
@@ -59,23 +60,35 @@ function getCellKey(latitude: number, longitude: number): string {
   return `${latitude}:${longitude}`;
 }
 
-export async function generateWalkingConnections(): Promise<number> {
+export async function generateWalkingConnections(
+  onProgress?: (
+    processedStops: number,
+    totalStops: number,
+    generatedEdges: number
+  ) => void
+): Promise<number> {
   const db = getDatabase();
 
   const [gtfsStops, osmStops] = await Promise.all([
-  db.stops.toArray(),
-  db.osmStops.toArray(),
-]);
+    db.stops.toArray(),
+    db.osmStops.toArray(),
+  ]);
 
-const stops = [
-  ...gtfsStops,
-  ...osmStops.map(stop => ({
-    ...stop,
-    locationType: 0,
-  })),
-].filter(hasValidCoordinates);
+  const stops = [
+    ...gtfsStops,
+    ...osmStops.map(stop => ({
+      ...stop,
+      locationType: 0,
+    })),
+  ].filter(hasValidCoordinates);
 
-  if (stops.length === 0) {
+  const totalStops = stops.length;
+
+  // Remove previous walking connections before rebuilding.
+  await db.walkingEdges.clear();
+
+  if (totalStops === 0) {
+    onProgress?.(0, 0, 0);
     return 0;
   }
 
@@ -83,21 +96,37 @@ const stops = [
     MAX_WALKING_DISTANCE_METERS / METERS_PER_DEGREE_LATITUDE;
 
   const averageLatitude =
-  stops.reduce((sum, stop) => sum + stop.latitude, 0) /
-  stops.length;
+    stops.reduce((sum, stop) => sum + stop.latitude, 0) /
+    totalStops;
 
   const longitudeMetersPerDegree =
-  METERS_PER_DEGREE_LATITUDE *
-  Math.cos((averageLatitude * Math.PI) / 180);
+    METERS_PER_DEGREE_LATITUDE *
+    Math.cos((averageLatitude * Math.PI) / 180);
 
   const longitudeCellSize =
-  MAX_WALKING_DISTANCE_METERS /
-  longitudeMetersPerDegree;
+    MAX_WALKING_DISTANCE_METERS /
+    longitudeMetersPerDegree;
 
   const grid = new Map<string, CoordinateStop[]>();
-  const walkingEdges: WalkingEdge[] = [];
 
-  for (const stop of stops) {
+  let walkingEdges: WalkingEdge[] = [];
+  let generatedEdges = 0;
+
+  // Write a batch without retaining all generated edges in memory.
+  async function flushBatch(): Promise<void> {
+    if (walkingEdges.length === 0) return;
+
+    const batch = walkingEdges;
+    walkingEdges = [];
+
+    await db.walkingEdges.bulkPut(batch);
+
+    generatedEdges += batch.length;
+  }
+
+  for (let index = 0; index < stops.length; index++) {
+    const stop = stops[index];
+
     const latitudeCell = Math.floor(
       stop.latitude / latitudeCellSize
     );
@@ -124,9 +153,7 @@ const stops = [
             nearbyStop.longitude
           );
 
-          if (
-            distanceMeters > MAX_WALKING_DISTANCE_METERS
-          ) {
+          if (distanceMeters > MAX_WALKING_DISTANCE_METERS) {
             continue;
           }
 
@@ -153,6 +180,10 @@ const stops = [
             distanceMeters: roundedDistance,
             durationMinutes,
           });
+
+          if (walkingEdges.length >= BATCH_SIZE) {
+            await flushBatch();
+          }
         }
       }
     }
@@ -166,15 +197,24 @@ const stops = [
     const currentCell = grid.get(currentCellKey) ?? [];
     currentCell.push(stop);
     grid.set(currentCellKey, currentCell);
+
+    // Report progress every 100 stops.
+    if ((index + 1) % 100 === 0 || index === totalStops - 1) {
+      onProgress?.(
+        index + 1,
+        totalStops,
+        generatedEdges + walkingEdges.length
+      );
+    }
   }
 
-  await db.transaction('rw', db.walkingEdges, async () => {
-    await db.walkingEdges.clear();
+  // Save the remaining edges.
+  await flushBatch();
 
-    if (walkingEdges.length > 0) {
-      await db.walkingEdges.bulkPut(walkingEdges);
-    }
+  console.info('[RouteReady] Walking connections completed:', {
+    processedStops: totalStops,
+    generatedEdges,
   });
 
-  return walkingEdges.length;
+  return generatedEdges;
 }
