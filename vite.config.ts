@@ -20,7 +20,7 @@ export default defineConfig({
         scope: '/',
         icons: [
           {
-            src: '/routeready-icon.png',
+            src: '/routeready-logo.png',
             sizes: '512x512',
             type: 'image/png',
           },
