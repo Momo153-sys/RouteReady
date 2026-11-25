@@ -1,5 +1,5 @@
 export async function diagnoseStopTimesSource() {
-  const response = await fetch('data/stop_times.txt');
+  const response = await fetch('/data/stop_times.txt');
 
   if (!response.ok || !response.body) {
     throw new Error('Could not read stop_times.txt');

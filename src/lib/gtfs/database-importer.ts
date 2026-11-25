@@ -171,11 +171,11 @@ export async function importGtfsData(
       calendarRecords,
       tripRecords,
     ] = await Promise.all([
-      fetchCsv('data/agency.csv'),
-      fetchCsv('data/stops-clean.csv'),
-      fetchCsv('data/routes.csv', ','),
-fetchCsv('data/calendar.csv', ','),
-fetchCsv('data/trips.csv', ','),
+      fetchCsv('/data/agency.csv'),
+      fetchCsv('/data/stops-clean.csv'),
+      fetchCsv('/data/routes.csv', ','),
+fetchCsv('/data/calendar.csv', ','),
+fetchCsv('/data/trips.csv', ','),
     ]);
 
     reportProgress(onProgress, {
@@ -312,7 +312,7 @@ export async function importStopTimesData(
 ): Promise<number> {
   const db = getDatabase();
 
-  const response = await fetch('data/stop_times.txt');
+  const response = await fetch('/data/stop_times.txt');
 
   if (!response.ok) {
     throw new Error(
